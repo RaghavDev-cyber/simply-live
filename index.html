@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simply Live - Smart Real-Time Service Finder</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#6366f1">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css?v=fresh">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+    <div id="app">
+        <nav class="navbar">
+            <div class="logo" onclick="app.navigate('home')">
+                <span class="logo-mark"><i class="fa-solid fa-compass"></i></span> Simply<span>Live</span>
+            </div>
+            <div style="font-size: 0.88rem; color: var(--text-muted); display:flex; gap:16px; align-items:center;">
+                <span id="user-location-text"><i class="fa-solid fa-location-dot" style="color:var(--primary);"></i> Detecting location...</span>
+                <button class="btn-text nav-fav-btn" onclick="app.navigate('favorites')" title="View Saved Services">
+                    <i class="fa-regular fa-bookmark"></i> <span class="nav-btn-text">Saved</span> (<span id="fav-count">0</span>)
+                </button>
+                <button class="btn-text" id="nav-provider-btn" onclick="app.navigate('provider-login')"><i class="fa-solid fa-user-tie"></i> <span class="nav-btn-text">Provider Portal</span></button>
+            </div>
+        </nav>
+
+        <div id="toast">
+            <i class="fa-solid fa-circle-info"></i> <span id="toast-msg"></span>
+        </div>
+
+        <main id="main-content">
+            
+            <section id="view-home" class="view active">
+                <div class="hero">
+                    <div class="hero-content">
+                        <div class="badge-trust-pill"><span class="status-dot-live"></span> Verified Service Network &middot; Across India</div>
+                        <h1>Find Verified Local Services Across India</h1>
+                        <p class="hero-subtext">Direct connections to neighborhood tiffins, express laundry pickup, and domestic housekeeping with real-time availability and transparent pricing nationwide.</p>
+                        
+                        <div class="search-wrapper">
+                            <form class="real-search" onsubmit="event.preventDefault(); app.performAISearch(document.getElementById('ai-search-input').value);">
+                                <button type="button" class="btn-icon voice-btn" id="voice-btn" onclick="app.startVoiceSearch()" title="Voice Search">
+                                    <i class="fa-solid fa-microphone"></i>
+                                </button>
+                                <input type="text" id="ai-search-input" placeholder="Search services, menus, or pricing (e.g. 'pure veg tiffin under ₹100' or 'laundry pickup')..." required>
+                                <button type="submit" class="btn-primary" id="ai-submit-btn"><i class="fa-solid fa-magnifying-glass"></i> Search</button>
+                            </form>
+                        </div>
+
+                        <div class="action-group">
+                            <button class="btn-secondary" onclick="app.navigate('customer-search')">
+                                <i class="fa-solid fa-grid-2"></i> Browse Categories
+                            </button>
+                            <button class="btn-secondary" onclick="app.navigate('map')">
+                                <i class="fa-solid fa-map-location-dot"></i> View on Map
+                            </button>
+                            <button class="btn-text" onclick="app.navigate('provider-register')">
+                                Register as Provider &rarr;
+                            </button>
+                        </div>
+
+                        <!-- Fast Category & Verified Filter Pills -->
+                        <div class="category-pills">
+                            <button class="pill-btn active" id="pill-all" onclick="app.filterHomeCategory('all')"><i class="fa-solid fa-layer-group"></i> All Services</button>
+                            <button class="pill-btn" id="pill-tiffin" onclick="app.filterHomeCategory('tiffin')"><i class="fa-solid fa-utensils"></i> Tiffins &amp; Mess</button>
+                            <button class="pill-btn" id="pill-laundry" onclick="app.filterHomeCategory('laundry')"><i class="fa-solid fa-shirt"></i> Laundry</button>
+                            <button class="pill-btn" id="pill-maid" onclick="app.filterHomeCategory('maid')"><i class="fa-solid fa-broom"></i> Housekeeping</button>
+                            <button class="pill-btn" id="pill-verified" onclick="app.filterHomeCategory('verified')"><i class="fa-solid fa-shield-check" style="color:var(--success);"></i> Verified Only</button>
+                        </div>
+                        
+                        <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-top: 3.5rem; margin-bottom: 0.75rem;">
+                            <h3 style="margin: 0; text-align: left;" id="home-section-title">All Registered Services</h3>
+                            <span id="home-services-count" style="color:var(--text-muted); font-size:0.88rem;">Scanning live providers...</span>
+                        </div>
+                        <div id="home-recommendations" class="results-grid"></div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="view-map" class="view">
+                <div class="container" style="max-width: 1200px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; flex-wrap:wrap; gap:10px;">
+                        <button class="btn-back" style="margin-bottom:0;" onclick="app.navigate('home')"><i class="fa-solid fa-chevron-left"></i> Back</button>
+                        <div style="display:flex; align-items:center; gap:12px;">
+                            <span class="live-radar-badge"><span class="radar-dot"></span> Live Radar Tracking</span>
+                            <button class="btn-secondary" id="map-filter-toggle" onclick="app.toggleMapActiveFilter()"><i class="fa-solid fa-bolt" style="color:var(--warning);"></i> Active Providers</button>
+                        </div>
+                    </div>
+                    <h2>Live Service Map</h2>
+                    <div id="map" style="width: 100%; height: 60vh; border-radius: 16px; border: 1px solid var(--border-color); margin-top:1rem;"></div>
+                </div>
+            </section>
+
+            <section id="view-customer-search" class="view">
+                <div class="container">
+                    <button class="btn-back" onclick="app.navigate('home')"><i class="fa-solid fa-chevron-left"></i> Back</button>
+                    <div class="search-header">
+                        <h2>Browse Categories</h2>
+                    </div>
+                    <div class="card glass-card search-card">
+                        <div class="form-group">
+                            <label>Service Type</label>
+                            <select id="service-type" onchange="app.openCategory(this.value)">
+                                <option value="" disabled selected>Select a category...</option>
+                                <option value="tiffin">Tiffin Service / Mess</option>
+                                <option value="laundry">Laundry</option>
+                                <option value="maid">Maid / Housekeeping</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="view-search-results" class="view">
+                <div class="container">
+                    <div class="results-header">
+                        <button class="btn-back" onclick="app.navigate('home')"><i class="fa-solid fa-chevron-left"></i> Back Home</button>
+                        <h2 id="search-title">Services</h2>
+                    </div>
+
+                    <!-- AI Analysis Display -->
+                    <div id="ai-analysis-box" class="card glass-card" style="padding: 1rem; margin-bottom: 2rem; display: none; border-color: var(--primary);">
+                        <h4 style="color:var(--primary); margin-bottom: 0.5rem;"><i class="fa-solid fa-brain"></i> AI Analysis</h4>
+                        <p id="ai-analysis-text" style="font-size: 0.95rem; margin:0;"></p>
+                    </div>
+
+                    <div id="food-filters" class="card glass-card" style="padding: 1rem; margin-bottom: 2rem; display: none;">
+                        <div class="radio-group">
+                            <label class="radio-btn"><input type="radio" name="food-pref" value="any" checked onclick="app.setFoodFilter('any')"> <span>Any</span></label>
+                            <label class="radio-btn"><input type="radio" name="food-pref" value="veg" onclick="app.setFoodFilter('veg')"> <span>Pure Veg</span></label>
+                            <label class="radio-btn"><input type="radio" name="food-pref" value="non-veg" onclick="app.setFoodFilter('non-veg')"> <span>Non-Veg</span></label>
+                        </div>
+                    </div>
+
+                    <div id="results-list" class="results-grid"></div>
+                </div>
+            </section>
+
+            <section id="view-service-detail" class="view">
+                <div class="container">
+                    <button class="btn-back" onclick="app.navigate('search-results')"><i class="fa-solid fa-chevron-left"></i> Back to Results</button>
+                    <div id="detail-content"></div>
+                </div>
+            </section>
+
+            <section id="view-provider-register" class="view">
+                <div class="container">
+                    <button class="btn-back" onclick="app.navigate('home')"><i class="fa-solid fa-chevron-left"></i> Back</button>
+                    <div class="register-header">
+                        <h2>Grow Your Business</h2>
+                        <p>List your local service and upload photos to connect with customers instantly.</p>
+                    </div>
+
+                    <form class="card glass-card register-form" id="register-form" enctype="multipart/form-data" onsubmit="event.preventDefault(); app.registerService();">
+                        <div class="form-group">
+                            <label>Service Name</label>
+                            <input type="text" id="reg-name" name="name" required placeholder="e.g. Maa Ki Rasoi Tiffin">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Service Type</label>
+                            <select id="reg-type" name="type" onchange="app.toggleProviderFoodPref()">
+                                <option value="tiffin">Tiffin Service / Mess</option>
+                                <option value="laundry">Laundry</option>
+                                <option value="maid">Maid / Housekeeping</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group" id="reg-food-pref-group">
+                            <label>Food Type</label>
+                            <select id="reg-food-type" name="foodPref">
+                                <option value="both">Both Veg & Non-Veg</option>
+                                <option value="veg">Pure Veg</option>
+                                <option value="non-veg">Non-Veg Only</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Description & Menu Highlights</label>
+                            <textarea id="reg-desc" name="desc" rows="4" required placeholder="Describe your service..."></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Menu / Pricing</label>
+                            <input type="text" id="reg-menu" name="menu" required placeholder="e.g. Rs 50/kg or Thali Rs 100">
+                        </div>
+
+                        <div class="form-group">
+                            <label>Upload Photos (Up to 5)</label>
+                            <input type="file" id="reg-photo" name="photos" accept="image/*" multiple style="background:rgba(255,255,255,0.1); border:1px dashed var(--border-color);">
+                        </div>
+
+                        <div class="form-group">
+                            <label>City &amp; Locality / Area</label>
+                            <input type="text" id="reg-location" name="location" required placeholder="e.g. Bandra West, Mumbai or Indiranagar, Bengaluru">
+                        </div>
+
+                        <div class="form-group">
+                            <label>Contact Number</label>
+                            <input type="tel" id="reg-contact" name="contact" required placeholder="+91 XXXXXXXXXX">
+                        </div>
+
+                        <div class="form-group">
+                            <label>Create a 4-digit PIN (For logging in to your dashboard)</label>
+                            <input type="password" id="reg-pin" name="pin" required maxlength="4" placeholder="1234">
+                        </div>
+
+                        <button type="submit" class="btn-primary btn-block">Register Service</button>
+                    </form>
+                </div>
+            </section>
+
+            <!-- PROVIDER LOGIN -->
+            <section id="view-provider-login" class="view">
+                <div class="container" style="max-width: 440px; margin-top: 3rem;">
+                    <button class="btn-back" onclick="app.navigate('home')"><i class="fa-solid fa-chevron-left"></i> Back</button>
+                    <div class="card glass-card" style="text-align: center; padding: 2rem;">
+                        <div style="width: 52px; height: 52px; border-radius: 12px; background: rgba(37, 99, 235, 0.12); border: 1px solid rgba(37, 99, 235, 0.25); display: flex; align-items: center; justify-content: center; margin: 0 auto 1.25rem; color: #60a5fa; font-size: 1.4rem;">
+                            <i class="fa-solid fa-user-tie"></i>
+                        </div>
+                        <h2>Provider Portal</h2>
+                        <p style="margin-bottom: 1.75rem; color: var(--text-muted); font-size: 0.9rem;">Sign in to manage your service listing, daily menu, and view customer leads.</p>
+                        <form onsubmit="event.preventDefault(); app.providerLogin();">
+                            <div class="form-group" style="text-align: left;">
+                                <label style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px; display: block;">Service ID or Registered Phone</label>
+                                <input type="text" id="login-id" placeholder="e.g. 1 or 9820144521" required autocomplete="username">
+                            </div>
+                            <div class="form-group" style="text-align: left;">
+                                <label style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px; display: block;">4-Digit Security PIN</label>
+                                <input type="password" id="login-pin" placeholder="••••" required maxlength="4" autocomplete="current-password">
+                            </div>
+                            <button type="submit" class="btn-primary btn-block" id="login-submit-btn" style="margin-top: 1rem;">
+                                <i class="fa-solid fa-right-to-bracket"></i> Sign In to Dashboard
+                            </button>
+                        </form>
+                        
+                        <div style="margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid var(--border-color); font-size: 0.9rem; color: var(--text-muted);">
+                            New service provider?
+                            <button class="btn-text" style="color: #60a5fa; padding: 0 4px; font-weight: 600;" onclick="app.navigate('provider-register')">
+                                Register Your Business &rarr;
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SAVED FAVORITES VIEW -->
+            <section id="view-favorites" class="view">
+                <div class="container">
+                    <button class="btn-back" onclick="app.navigate('home')"><i class="fa-solid fa-chevron-left"></i> Back Home</button>
+                    <div class="results-header" style="display:flex; justify-content:space-between; align-items:center;">
+                        <h2><i class="fa-solid fa-heart" style="color:var(--secondary);"></i> My Saved Favorites</h2>
+                        <span id="fav-total-text" style="color:var(--text-muted); font-size:0.95rem;">0 saved services</span>
+                    </div>
+                    <div id="favorites-list" class="results-grid"></div>
+                </div>
+            </section>
+
+            <!-- PROVIDER DASHBOARD -->
+            <section id="view-provider-dashboard" class="view">
+                <div class="container">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 2rem;">
+                        <h2>Provider Dashboard</h2>
+                        <button class="btn-secondary" onclick="app.providerLogout()">Logout</button>
+                    </div>
+                    
+                    <div class="card glass-card" style="margin-bottom: 2rem;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; margin-bottom:1.5rem;">
+                            <div>
+                                <h3 id="dash-name" style="color:var(--primary); font-size:2rem; margin:0;">Service Name</h3>
+                                <div style="display:flex; align-items:center; gap:8px; margin-top:5px;">
+                                    <span class="badge-verified"><i class="fa-solid fa-shield-check"></i> Verified Partner</span>
+                                    <span style="color:var(--text-muted); font-size:0.85rem;">ID: #<span id="dash-id">--</span></span>
+                                </div>
+                            </div>
+                            <div class="trust-badge-dash">
+                                <div class="trust-score-val" id="dash-trust-score">98%</div>
+                                <div class="trust-score-sub"><i class="fa-solid fa-certificate"></i> Trust Tier 1</div>
+                            </div>
+                        </div>
+
+                        <div style="display:flex; gap: 1.5rem; flex-wrap:wrap;">
+                            <div style="background: rgba(255,255,255,0.05); padding: 1.5rem; border-radius: 12px; flex:1; min-width:140px; text-align:center;">
+                                <i class="fa-solid fa-eye" style="font-size:1.8rem; color:var(--primary); margin-bottom:10px;"></i>
+                                <h2 id="dash-views" style="margin:0;">0</h2>
+                                <p style="color:var(--text-muted); margin:0; font-size:0.85rem;">Total Views</p>
+                            </div>
+                            <div style="background: rgba(255,255,255,0.05); padding: 1.5rem; border-radius: 12px; flex:1; min-width:140px; text-align:center;">
+                                <i class="fa-solid fa-phone" style="font-size:1.8rem; color:var(--success); margin-bottom:10px;"></i>
+                                <h2 id="dash-calls" style="margin:0;">0</h2>
+                                <p style="color:var(--text-muted); margin:0; font-size:0.85rem;">Call Leads</p>
+                            </div>
+                            <div style="background: rgba(255,255,255,0.05); padding: 1.5rem; border-radius: 12px; flex:1; min-width:140px; text-align:center;">
+                                <i class="fa-solid fa-comments" style="font-size:1.8rem; color:var(--secondary); margin-bottom:10px;"></i>
+                                <h2 id="dash-chats" style="margin:0;">0</h2>
+                                <p style="color:var(--text-muted); margin:0; font-size:0.85rem;">Live Chats</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Live Customer Inquiries & Real-time Chat replying -->
+                    <div class="card glass-card" style="margin-bottom: 2rem;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                            <h3 style="margin:0;"><i class="fa-solid fa-comments" style="color:var(--secondary);"></i> Live Customer Inquiries</h3>
+                            <span style="font-size:0.85rem; color:var(--success);"><i class="fa-solid fa-circle fa-beat" style="font-size:0.6rem;"></i> Real-Time Feed</span>
+                        </div>
+                        <div id="provider-inquiries-feed" class="provider-inquiries-container">
+                            <p style="color:var(--text-muted); text-align:center; padding:1.5rem 0;">No inquiries received yet. When customers message you, they will appear here in real time!</p>
+                        </div>
+                        <form onsubmit="event.preventDefault(); app.providerSendReply();" style="display:flex; gap:10px; margin-top:1rem;">
+                            <input type="text" id="provider-reply-input" placeholder="Type reply as Provider..." required>
+                            <button type="submit" class="btn-primary" style="white-space:nowrap;"><i class="fa-solid fa-paper-plane"></i> Send Reply</button>
+                        </form>
+                    </div>
+
+                    <div class="card glass-card">
+                        <h3>Update Daily Menu / Pricing</h3>
+                        <p style="color:var(--text-muted); font-size:0.9rem;">Keep your customers updated with your latest offerings. Updating this updates your "Active Today" radar pulse!</p>
+                        <form onsubmit="event.preventDefault(); app.updateProviderMenu();" style="margin-top:1rem;">
+                            <div class="form-group">
+                                <input type="text" id="dash-menu" required>
+                            </div>
+                            <button type="submit" class="btn-primary">Save Changes</button>
+                        </form>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Feedback Modal -->
+    <div id="feedback-modal" class="view" style="position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:999; display:none; align-items:center; justify-content:center;">
+        <div class="card glass-card" style="width: 90%; max-width: 400px;">
+            <h3>Write a Review</h3>
+            <div class="star-rating-input" id="star-rating-input" style="margin: 1rem 0;">
+                <i class="fa-solid fa-star" data-val="1"></i>
+                <i class="fa-solid fa-star" data-val="2"></i>
+                <i class="fa-solid fa-star" data-val="3"></i>
+                <i class="fa-solid fa-star" data-val="4"></i>
+                <i class="fa-solid fa-star" data-val="5"></i>
+            </div>
+            <div class="form-group">
+                <input type="text" id="review-name" placeholder="Your Name">
+            </div>
+            <div class="form-group">
+                <textarea id="review-text" rows="3" placeholder="Share your experience..."></textarea>
+            </div>
+            <div style="display:flex; gap:1rem;">
+                <button class="btn-primary" style="flex:1;" onclick="app.submitReview()">Submit</button>
+                <button class="btn-secondary" style="flex:1;" onclick="app.closeFeedbackModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Smart Radar Modal -->
+    <div id="radar-modal" class="view" style="position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:999; display:none; align-items:center; justify-content:center;">
+        <div class="card glass-card" style="width: 90%; max-width: 400px; text-align:center;">
+            <i class="fa-solid fa-radar fa-spin" style="font-size:3rem; color:var(--primary); margin-bottom:1rem;"></i>
+            <h3>Smart Radar Alert</h3>
+            <p style="color:var(--text-muted); font-size:0.9rem;">No services found near you? We'll ping you the second a new provider registers!</p>
+            <div class="form-group" style="margin-top:1.5rem;">
+                <input type="email" id="radar-email" placeholder="Your Email Address">
+            </div>
+            <div style="display:flex; gap:1rem;">
+                <button class="btn-primary" style="flex:1;" onclick="app.subscribeRadar()">Alert Me</button>
+                <button class="btn-secondary" style="flex:1;" onclick="document.getElementById('radar-modal').style.display='none'">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Simply Live Website-Wide Real-Time AI Concierge -->
+    <button id="simply-live-chat-fab" class="simply-live-chat-fab" onclick="app.toggleLiveAIChat()" title="Open Simply Live Concierge">
+        <span class="chat-fab-icon"><i class="fa-solid fa-message"></i></span>
+        <span class="chat-fab-label">Simply Live AI</span>
+        <span class="chat-fab-status-dot"></span>
+    </button>
+
+    <div id="simply-live-chat-window" class="simply-live-chat-window">
+        <!-- Header -->
+        <div class="chat-window-header">
+            <div class="chat-header-brand">
+                <div class="chat-ai-avatar">
+                    <i class="fa-solid fa-sparkles"></i>
+                </div>
+                <div>
+                    <h3 class="chat-header-title">Simply Live <span>AI</span></h3>
+                    <span class="chat-live-status"><span class="status-dot-live"></span> Verified Database Active</span>
+                </div>
+            </div>
+            <div class="chat-header-actions">
+                <button class="chat-hdr-btn" onclick="app.clearLiveChatHistory()" title="Reset Conversation"><i class="fa-solid fa-rotate-left"></i></button>
+                <button class="chat-hdr-btn" onclick="app.toggleLiveAIChat()" title="Close Live Chat"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+        </div>
+
+        <!-- Live Scanning Banner -->
+        <div class="chat-live-ticker">
+            <span class="ticker-dot"></span>
+            <span id="chat-ticker-text">Live Sync: Scanning verified providers across India</span>
+        </div>
+
+        <!-- Specification Quick Chips -->
+        <div class="chat-prompt-chips">
+            <button type="button" onclick="app.sendQuickPrompt('Show pure veg tiffins under ₹100')">Veg Tiffins &lt; ₹100</button>
+            <button type="button" onclick="app.sendQuickPrompt('Show laundry services with pickup')">Laundry Pickup</button>
+            <button type="button" onclick="app.sendQuickPrompt('Show verified housekeeping maids')">Housekeeping Maids</button>
+            <button type="button" onclick="app.sendQuickPrompt('What meals are available today?')">Daily Meal Menus</button>
+        </div>
+
+        <!-- Messages Container -->
+        <div id="live-chat-messages" class="live-chat-messages">
+            <div class="chat-msg bot">
+                <div class="msg-avatar"><i class="fa-solid fa-sparkles"></i></div>
+                <div class="msg-content">
+                    <div class="msg-bubble">
+                        Welcome to <strong>Simply Live AI</strong>. I track live menus, active laundry turnaround, verified housekeeping agencies, and real-time pricing across India. How can I assist you today?
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Typing Indicator -->
+        <div id="chat-typing-indicator" class="chat-typing-indicator" style="display:none;">
+            <div class="typing-dot"></div>
+            <div class="typing-dot"></div>
+            <div class="typing-dot"></div>
+            <span>Simply Live AI is scanning live services...</span>
+        </div>
+
+        <!-- Input Bar -->
+        <form class="live-chat-input-bar" onsubmit="event.preventDefault(); app.sendLiveChatMessage();">
+            <button type="button" class="chat-voice-btn" id="chat-voice-btn" onclick="app.startLiveChatVoice()" title="Voice Search">
+                <i class="fa-solid fa-microphone"></i>
+            </button>
+            <input type="text" id="live-chat-input" placeholder="Ask Simply Live AI... e.g. 'Pure veg dinner under 120'" required autocomplete="off">
+            <button type="submit" class="chat-send-btn" title="Send message">
+                <i class="fa-solid fa-paper-plane"></i>
+            </button>
+        </form>
+    </div>
+
+    <script src="app.js?v=fresh"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js');
+        }
+    </script>
+</body>
+</html>
